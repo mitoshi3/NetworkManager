@@ -41,13 +41,24 @@ NMConnectivity *nm_connectivity_get (void);
 
 const char *nm_connectivity_state_to_string (NMConnectivityState state);
 
-void                 nm_connectivity_check_async  (NMConnectivity       *self,
-                                                   const char           *iface,
-                                                   GAsyncReadyCallback   callback,
-                                                   gpointer              user_data);
-NMConnectivityState  nm_connectivity_check_finish (NMConnectivity       *self,
-                                                   GAsyncResult         *result,
-                                                   GError              **error);
 gboolean nm_connectivity_check_enabled (NMConnectivity *self);
+
+typedef struct _NMConnectivityCheckHandle NMConnectivityCheckHandle;
+
+#define NM_CONNECTIVITY_ERROR ((NMConnectivityState) -1)
+#define NM_CONNECTIVITY_FAKE  ((NMConnectivityState) -2)
+
+typedef void (*NMConnectivityCheckCallback) (NMConnectivity *self,
+                                             NMConnectivityCheckHandle *handle,
+                                             NMConnectivityState state,
+                                             GError *error,
+                                             gpointer user_data);
+
+NMConnectivityCheckHandle *nm_connectivity_check_start (NMConnectivity *self,
+                                                        const char *iface,
+                                                        NMConnectivityCheckCallback callback,
+                                                        gpointer user_data);
+
+void nm_connectivity_check_cancel (NMConnectivityCheckHandle *handle);
 
 #endif /* __NETWORKMANAGER_CONNECTIVITY_H__ */

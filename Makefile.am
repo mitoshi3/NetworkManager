@@ -1418,6 +1418,8 @@ src_libNetworkManager_la_SOURCES = \
 	src/nm-checkpoint-manager.h \
 	src/nm-checkpoint.c \
 	src/nm-checkpoint.h \
+	src/nm-connectivity.c \
+	src/nm-connectivity.h \
 	\
 	src/devices/nm-device.c \
 	src/devices/nm-device.h \
@@ -1579,11 +1581,6 @@ src_libNetworkManager_la_SOURCES = \
 	src/nm-types.h \
 	\
 	$(NULL)
-
-if WITH_CONCHECK
-src_libNetworkManager_la_SOURCES += \
-	src/nm-connectivity.c
-endif
 
 src_libNetworkManager_la_LIBADD = \
 	src/libNetworkManagerBase.la \

@@ -5326,7 +5326,11 @@ typedef struct {
 } ConnectivityCheckData;
 
 static void
-device_connectivity_done (NMDevice *device, NMConnectivityState state, gpointer user_data)
+device_connectivity_done (NMDevice *self,
+                          NMDeviceConnectivityHandle *handle,
+                          NMConnectivityState state,
+                          GError *error,
+                          gpointer user_data)
 {
 	ConnectivityCheckData *data = user_data;
 

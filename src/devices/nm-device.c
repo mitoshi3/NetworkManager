@@ -6240,15 +6240,23 @@ dhcp4_fail (NMDevice *self, gboolean timeout)
 	    && (timeout || (priv->ip4_state == IP_CONF))
 	    && !priv->dhcp4.was_active)
 		nm_device_activate_schedule_ip4_config_timeout (self);
-	else if (priv->ip4_state == IP_DONE || priv->dhcp4.was_active) {
+	else if (   priv->dhcp4.num_tries_left < DHCP_NUM_TRIES_MAX
+	         || priv->ip4_state == IP_DONE
+	         || priv->dhcp4.was_active) {
 		/* Don't fail immediately when the lease expires but try to
 		 * restart DHCP for a predefined number of times.
 		 */
 		if (priv->dhcp4.num_tries_left) {
 			priv->dhcp4.num_tries_left--;
 			dhcp_schedule_restart (self, AF_INET, "lease expired");
-		} else
+		} else {
 			nm_device_ip_method_failed (self, AF_INET, NM_DEVICE_STATE_REASON_IP_CONFIG_EXPIRED);
+			/* We failed the ipv4 method but schedule again the retries if the ipv6 method is
+			 * configured, keeping the connection up.
+			 */
+			if (nm_device_get_state (self) != NM_DEVICE_STATE_FAILED)
+				dhcp_schedule_restart (self, AF_INET, "renewal failed");
+		}
 	} else
 		g_warn_if_reached ();
 }
@@ -6288,6 +6296,14 @@ dhcp4_state_changed (NMDhcpClient *client,
 			_LOGW (LOGD_DHCP4, "failed to get IPv4 config in response to DHCP event.");
 			dhcp4_fail (self, FALSE);
 			break;
+		}
+
+		/* After long time we have been able to renew the lease:
+		 * update the ip state
+		 */
+		if (   priv->dhcp4.num_tries_left < DHCP_NUM_TRIES_MAX
+		    && priv->ip4_state == IP_FAIL) {
+			_set_ip_state (self, AF_INET, IP_CONF);
 		}
 
 		g_free (priv->dhcp4.pac_url);
@@ -6986,15 +7002,23 @@ dhcp6_fail (NMDevice *self, gboolean timeout)
 		    && (timeout || (priv->ip6_state == IP_CONF))
 		    && !priv->dhcp6.was_active)
 			nm_device_activate_schedule_ip6_config_timeout (self);
-		else if (priv->ip6_state == IP_DONE || priv->dhcp6.was_active) {
+		else if (   priv->dhcp6.num_tries_left < DHCP_NUM_TRIES_MAX
+		         || priv->ip6_state == IP_DONE
+		         || priv->dhcp6.was_active) {
 			/* Don't fail immediately when the lease expires but try to
 			 * restart DHCP for a predefined number of times.
 			 */
 			if (priv->dhcp6.num_tries_left) {
 				priv->dhcp6.num_tries_left--;
 				dhcp_schedule_restart (self, AF_INET6, "lease expired");
-			} else
+			} else {
 				nm_device_ip_method_failed (self, AF_INET6, NM_DEVICE_STATE_REASON_IP_CONFIG_EXPIRED);
+				/* We failed the ipv6 method but schedule again the retries if the ipv4 method is
+				 * configured, keeping the connection up.
+				 */
+				if (nm_device_get_state (self) != NM_DEVICE_STATE_FAILED)
+					dhcp_schedule_restart (self, AF_INET6, "renewal failed");
+			}
 		} else
 			g_warn_if_reached ();
 	} else {
@@ -7059,6 +7083,14 @@ dhcp6_state_changed (NMDhcpClient *client,
 				_notify (self, PROP_DHCP6_CONFIG);
 			} else
 				applied_config_clear (&priv->dhcp6.ip6_config);
+		}
+
+		/* After long time we have been able to renew the lease:
+		 * update the ip state
+		 */
+		if (   priv->dhcp6.num_tries_left < DHCP_NUM_TRIES_MAX
+		    && priv->ip6_state == IP_FAIL) {
+			_set_ip_state (self, AF_INET6, IP_CONF);
 		}
 
 		priv->dhcp6.num_tries_left = DHCP_NUM_TRIES_MAX;

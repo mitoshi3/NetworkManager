@@ -1143,6 +1143,7 @@ if (test "${enable_address_sanitizer}" = "yes"); then
 	sanitizer_cflags="$sanitizer_cflags -fsanitize=address"
 	sanitizer_ldflags="$sanitizer_ldflags -Wc,-fsanitize=address"
 	sanitizers="${sanitizers}asan "
+	CFLAGS="$CFLAGS -DASAN_BUILD"
 fi
 
 AC_ARG_ENABLE(undefined-sanitizer,

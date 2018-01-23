@@ -51,9 +51,6 @@ dbusactivation_DATA =
 INTROSPECTION_GIRS =
 INTROSPECTION_SCANNER_ARGS =
 INTROSPECTION_COMPILER_ARGS =
-# Pass SANITIZER_ENV where a command that uses built libraries is
-# executed, to suppress possible errors
-INTROSPECTION_SCANNER_ENV = $(SANITIZER_ENV)
 
 libnmincludedir = $(includedir)/libnm
 libnminclude_HEADERS =
@@ -102,15 +99,8 @@ endif
 
 ###############################################################################
 
-set_sanitizer_env = \
-	[ -n "$(SANITIZER_ENV)" ] && export $(SANITIZER_ENV) ; \
-	if [ -n "$(1)" ] && echo $(CFLAGS) | grep -e -fsanitize=address ; then \
-		export LD_PRELOAD="$${LD_PRELOAD}:$$(ldd $(1) | grep libasan\.so\.. -o | head -n 1)"; \
-	fi
-
 check_so_symbols = \
-	$(call set_sanitizer_env,$(1)); \
-	LD_BIND_NOW=1 LD_PRELOAD=$${LD_PRELOAD}:$(1) $(builddir)/src/NetworkManager --version >/dev/null
+	LD_BIND_NOW=1 $(builddir)/src/NetworkManager --version >/dev/null
 
 ###############################################################################
 
@@ -1009,14 +999,10 @@ libnm_docs_sources = $(libnm_core_lib_c_settings_real)
 libnm/nm-settings-docs-overrides.xml: libnm/generate-plugin-docs.pl $(libnm_docs_sources)
 	$(AM_V_GEN) $(srcdir)/libnm/generate-plugin-docs.pl dbus $@ $(filter-out $<,$^)
 
-# When the python scripts loads libnm and the address sanitizers is
-# enabled, we must LD_PRELOAD libasan otherwise it will complain that
-# it was not loaded as initial library.
 libnm/nm-property-docs.xml: libnm/generate-setting-docs.py $(libnm_docs_sources) | libnm/NM-1.0.gir libnm/NM-1.0.typelib libnm/libnm.la
 	$(AM_V_GEN) \
 	export GI_TYPELIB_PATH=$(abs_builddir)/libnm$${GI_TYPELIB_PATH:+:$$GI_TYPELIB_PATH}; \
 	export LD_LIBRARY_PATH=$(abs_builddir)/libnm/.libs$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}; \
-	$(call set_sanitizer_env,$(abs_builddir)/libnm/.libs/libnm.so); \
 	"$(PYTHON)" \
 	$(srcdir)/libnm/generate-setting-docs.py \
 		--gir $(builddir)/libnm/NM-1.0.gir \
@@ -1026,7 +1012,6 @@ libnm/nm-settings-docs.xml: libnm/generate-setting-docs.py libnm/nm-settings-doc
 	$(AM_V_GEN) \
 	export GI_TYPELIB_PATH=$(abs_builddir)/libnm$${GI_TYPELIB_PATH:+:$$GI_TYPELIB_PATH}; \
 	export LD_LIBRARY_PATH=$(abs_builddir)/libnm/.libs$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}; \
-	$(call set_sanitizer_env,$(abs_builddir)/libnm/.libs/libnm.so); \
 	"$(PYTHON)" \
 	$(srcdir)/libnm/generate-setting-docs.py \
 		--gir $(builddir)/libnm/NM-1.0.gir \
@@ -1175,6 +1160,7 @@ src_cppflags = \
 	$(LIBAUDIT_CFLAGS) \
 	$(SYSTEMD_LOGIN_CFLAGS) \
 	$(SYSTEMD_JOURNAL_CFLAGS) \
+	$(SANITIZER_CFLAGS) \
 	\
 	$(NULL)
 
@@ -1638,6 +1624,7 @@ check_ltlibraries += src/libNetworkManagerTest.la
 
 src_tests_cppflags = \
 	$(src_cppflags) \
+	$(SANITIZER_CFLAGS) \
 	-DNETWORKMANAGER_COMPILATION_TEST
 
 if REQUIRE_ROOT_TESTS
@@ -1686,7 +1673,8 @@ src_NetworkManager_LDADD = \
 
 src_NetworkManager_LDFLAGS = \
 	-rdynamic \
-	-Wl,--version-script="src/NetworkManager.ver"
+	-Wl,--version-script="src/NetworkManager.ver" \
+	$(SANITIZER_LDFLAGS)
 
 $(src_NetworkManager_OBJECTS): $(libnm_core_lib_h_pub_mkenums)
 
@@ -1707,7 +1695,8 @@ src_nm_iface_helper_LDADD = \
 	$(DL_LIBS)
 
 src_nm_iface_helper_LDFLAGS = \
-	-Wl,--version-script="$(srcdir)/linker-script-binary.ver"
+	-Wl,--version-script="$(srcdir)/linker-script-binary.ver" \
+	$(SANITIZER_LDFLAGS)
 
 $(src_nm_iface_helper_OBJECTS): $(libnm_core_lib_h_pub_mkenums)
 
@@ -1765,6 +1754,9 @@ src_dhcp_tests_test_dhcp_utils_CPPFLAGS = $(src_dhcp_tests_cppflags)
 
 src_dhcp_tests_test_dhcp_dhclient_LDADD = $(src_dhcp_tests_ldadd)
 src_dhcp_tests_test_dhcp_utils_LDADD = $(src_dhcp_tests_ldadd)
+
+src_dhcp_tests_test_dhcp_dhclient_LDFLAGS = $(src_tests_ldflags)
+src_dhcp_tests_test_dhcp_utils_LDFLAGS = $(src_tests_ldflags)
 
 $(src_dhcp_tests_test_dhcp_dhclient_OBJECTS): $(libnm_core_lib_h_pub_mkenums)
 $(src_dhcp_tests_test_dhcp_utils_OBJECTS): $(libnm_core_lib_h_pub_mkenums)
@@ -1859,7 +1851,8 @@ src_settings_plugins_keyfile_tests_test_keyfile_CPPFLAGS = \
 
 src_settings_plugins_keyfile_tests_test_keyfile_LDFLAGS = \
 	$(GLIB_LIBS) \
-	$(CODE_COVERAGE_LDFLAGS)
+	$(CODE_COVERAGE_LDFLAGS) \
+	$(SANITIZER_LDFLAGS)
 
 src_settings_plugins_keyfile_tests_test_keyfile_LDADD = \
 	src/libNetworkManagerTest.la
@@ -1971,7 +1964,8 @@ src_settings_plugins_ibft_tests_test_ibft_CPPFLAGS = \
 
 src_settings_plugins_ibft_tests_test_ibft_LDFLAGS = \
 	$(GLIB_LIBS) \
-	$(CODE_COVERAGE_LDFLAGS)
+	$(CODE_COVERAGE_LDFLAGS) \
+	$(SANITIZER_LDFLAGS)
 
 src_settings_plugins_ibft_tests_test_ibft_LDADD = \
 	src/settings/plugins/ibft/libnms-ibft-core.la \
@@ -2022,6 +2016,7 @@ src_settings_plugins_ifcfg_rh_cppflags = \
 	-I$(builddir)/libnm-core \
 	$(GLIB_CFLAGS) \
 	$(NSS_CFLAGS) \
+	$(SANITIZER_CFLAGS) \
 	-DNETWORKMANAGER_COMPILATION=NM_NETWORKMANAGER_COMPILATION_DAEMON \
 	-DSYSCONFDIR=\"$(sysconfdir)\" \
 	-DSBINDIR=\"$(sbindir)\"
@@ -2078,7 +2073,8 @@ src_settings_plugins_ifcfg_rh_libnm_settings_plugin_ifcfg_rh_la_CPPFLAGS = $(src
 
 src_settings_plugins_ifcfg_rh_libnm_settings_plugin_ifcfg_rh_la_LDFLAGS = \
 	-module -avoid-version \
-	-Wl,--version-script="$(srcdir)/linker-script-settings.ver"
+	-Wl,--version-script="$(srcdir)/linker-script-settings.ver" \
+	$(SANITIZER_LDFLAGS)
 
 src_settings_plugins_ifcfg_rh_libnm_settings_plugin_ifcfg_rh_la_LIBADD = \
 	src/settings/plugins/ifcfg-rh/libnms-ifcfg-rh-core.la \
@@ -2108,7 +2104,8 @@ src_settings_plugins_ifcfg_rh_tests_test_ifcfg_rh_CPPFLAGS = \
 
 src_settings_plugins_ifcfg_rh_tests_test_ifcfg_rh_LDFLAGS = \
 	$(GLIB_LIBS) \
-	$(CODE_COVERAGE_LDFLAGS)
+	$(CODE_COVERAGE_LDFLAGS) \
+	$(SANITIZER_LDFLAGS)
 
 src_settings_plugins_ifcfg_rh_tests_test_ifcfg_rh_LDADD = \
 	src/settings/plugins/ifcfg-rh/libnms-ifcfg-rh-core.la \
@@ -2415,7 +2412,8 @@ src_settings_plugins_ifupdown_tests_test_ifupdown_CPPFLAGS = \
 
 src_settings_plugins_ifupdown_tests_test_ifupdown_LDFLAGS = \
 	$(GLIB_LDFLAGS) \
-	$(CODE_COVERAGE_LDFLAGS)
+	$(CODE_COVERAGE_LDFLAGS) \
+	$(SANITIZER_LDFLAGS)
 
 src_settings_plugins_ifupdown_tests_test_ifupdown_LDADD = \
 	src/settings/plugins/ifupdown/libnms-ifupdown-core.la \
@@ -2717,6 +2715,7 @@ src_devices_wifi_tests_test_general_CPPFLAGS = \
 	$(GLIB_CFLAGS)
 
 src_devices_wifi_tests_test_general_LDADD = src/libNetworkManagerTest.la
+src_devices_wifi_tests_test_general_LDFLAGS = $(SANITIZER_LDFLAGS)
 
 $(src_devices_wifi_tests_test_general_OBJECTS): $(libnm_core_lib_h_pub_mkenums)
 
@@ -2845,6 +2844,9 @@ src_dnsmasq_tests_test_dnsmasq_utils_CPPFLAGS = \
 src_dnsmasq_tests_test_dnsmasq_utils_LDADD = \
 	src/libNetworkManagerTest.la
 
+src_dnsmasq_tests_test_dnsmasq_utils_LDFLAGS = \
+	$(SANITIZER_LDFLAGS)
+
 $(src_dnsmasq_tests_test_dnsmasq_utils_OBJECTS): $(libnm_core_lib_h_pub_mkenums)
 
 EXTRA_DIST += \
@@ -2855,7 +2857,8 @@ EXTRA_DIST += \
 ###############################################################################
 
 src_platform_tests_ldflags = \
-	$(CODE_COVERAGE_LDFLAGS)
+	$(CODE_COVERAGE_LDFLAGS) \
+	$(SANITIZER_LDFLAGS)
 
 src_platform_tests_libadd = \
 	src/libNetworkManagerTest.la \
@@ -2950,7 +2953,8 @@ EXTRA_DIST += \
 ###############################################################################
 
 src_devices_tests_ldflags = \
-	$(CODE_COVERAGE_LDFLAGS)
+	$(CODE_COVERAGE_LDFLAGS) \
+	$(SANITIZER_LDFLAGS)
 
 check_programs += \
 	src/devices/tests/test-lldp \
@@ -2977,7 +2981,8 @@ EXTRA_DIST += \
 ###############################################################################
 
 src_ndisc_tests_ldflags = \
-	$(CODE_COVERAGE_LDFLAGS)
+	$(CODE_COVERAGE_LDFLAGS) \
+	$(SANITIZER_LDFLAGS)
 
 src_ndisc_tests_ldadd = \
 	src/libNetworkManagerTest.la \
@@ -2987,11 +2992,11 @@ check_programs += src/ndisc/tests/test-ndisc-fake
 check_programs_norun += src/ndisc/tests/test-ndisc-linux
 
 src_ndisc_tests_test_ndisc_linux_CPPFLAGS = $(src_tests_cppflags)
-src_ndisc_tests_test_ndisc_linux_LDFLAGS = $(src_ndisc_tests_flags)
+src_ndisc_tests_test_ndisc_linux_LDFLAGS = $(src_ndisc_tests_ldflags)
 src_ndisc_tests_test_ndisc_linux_LDADD = $(src_ndisc_tests_ldadd)
 
 src_ndisc_tests_test_ndisc_fake_CPPFLAGS = $(src_tests_cppflags)
-src_ndisc_tests_test_ndisc_fake_LDFLAGS = $(src_ndisc_tests_flags)
+src_ndisc_tests_test_ndisc_fake_LDFLAGS = $(src_ndisc_tests_ldflags)
 src_ndisc_tests_test_ndisc_fake_LDADD = $(src_ndisc_tests_ldadd)
 
 $(src_ndisc_tests_test_ndisc_linux_OBJECTS): $(libnm_core_lib_h_pub_mkenums)
@@ -3012,6 +3017,9 @@ src_supplicant_tests_test_supplicant_config_CPPFLAGS = \
 
 src_supplicant_tests_test_supplicant_config_LDADD = \
 	src/libNetworkManagerTest.la
+
+src_supplicant_tests_test_supplicant_config_LDFLAGS = \
+	$(SANITIZER_LDFLAGS)
 
 $(src_supplicant_tests_test_supplicant_config_OBJECTS): $(libnm_core_lib_h_pub_mkenums)
 
@@ -3039,6 +3047,9 @@ src_tests_config_test_config_CPPFLAGS = \
 src_tests_config_test_config_LDADD = \
 	src/libNetworkManagerTest.la
 
+src_tests_config_test_config_LDFLAGS = \
+	$(SANITIZER_LDFLAGS)
+
 $(src_tests_config_test_config_OBJECTS): $(libnm_core_lib_h_pub_mkenums)
 
 EXTRA_DIST += \
@@ -3057,7 +3068,8 @@ EXTRA_DIST += \
 ###############################################################################
 
 src_tests_ldflags = \
-	$(CODE_COVERAGE_LDFLAGS)
+	$(CODE_COVERAGE_LDFLAGS) \
+	$(SANITIZER_LDFLAGS)
 
 src_tests_ldadd = \
 	src/libNetworkManagerTest.la
@@ -3454,6 +3466,7 @@ clients_cli_nmcli_SOURCES = \
 clients_cli_nmcli_CPPFLAGS = \
 	-I$(srcdir)/clients/cli \
 	$(clients_cppflags) \
+	$(SANITIZER_CFLAGS) \
 	-DG_LOG_DOMAIN=\""nmcli"\" \
 	-DNETWORKMANAGER_COMPILATION=NM_NETWORKMANAGER_COMPILATION_CLIENT \
 	-DNMCLI_LOCALEDIR=\"$(datadir)/locale\"
@@ -3474,7 +3487,8 @@ clients_cli_nmcli_LDADD += $(POLKIT_LIBS)
 endif
 
 clients_cli_nmcli_LDFLAGS = \
-	-Wl,--version-script="$(srcdir)/linker-script-binary.ver"
+	-Wl,--version-script="$(srcdir)/linker-script-binary.ver" \
+	$(SANITIZER_LDFLAGS)
 
 $(clients_cli_nmcli_OBJECTS): $(libnm_core_lib_h_pub_mkenums)
 
@@ -3562,6 +3576,7 @@ clients_tui_newt_libnmt_newt_a_CPPFLAGS = \
 	-DNETWORKMANAGER_COMPILATION=NM_NETWORKMANAGER_COMPILATION_CLIENT \
 	$(GLIB_CFLAGS) \
 	$(NEWT_CFLAGS) \
+	$(SANITIZER_CFLAGS) \
 	$(NULL)
 
 bin_PROGRAMS += clients/tui/nmtui
@@ -3660,7 +3675,8 @@ clients_tui_nmtui_CPPFLAGS = \
 	-DLOCALEDIR=\""$(localedir)"\"
 
 clients_tui_nmtui_LDFLAGS = \
-	-Wl,--version-script="$(srcdir)/linker-script-binary.ver"
+	-Wl,--version-script="$(srcdir)/linker-script-binary.ver" \
+	$(SANITIZER_LDFLAGS)
 
 clients_tui_nmtui_LDADD = \
 	libnm/libnm.la \

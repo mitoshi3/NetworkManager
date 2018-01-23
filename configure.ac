@@ -1160,10 +1160,9 @@ if (test "${enable_undefined_sanitizer}" = "yes"); then
 fi
 
 if test -n "$sanitizers"; then
-	CFLAGS="$CFLAGS $sanitizer_cflags -DVALGRIND=1 -fno-omit-frame-pointer"
-	LDFLAGS="$LDFLAGS $sanitizer_ldflags"
 	sanitizers="${sanitizers% }"
-	AC_SUBST(SANITIZER_ENV, [ASAN_OPTIONS=detect_leaks=0])
+	AC_SUBST(SANITIZER_CFLAGS, ["$sanitizer_cflags -DVALGRIND=1 -fno-omit-frame-pointer"])
+	AC_SUBST(SANITIZER_LDFLAGS, [$sanitizer_ldflags])
 fi
 
 AC_SUBST(SANITIZERS, [$sanitizers])
